@@ -1,0 +1,46 @@
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Datasets
+data/
+
+# Model artifacts
+models/
+!models/.gitkeep
+
+# Outputs / reports
+outputs/
+reports/
+
+# Local test images
+test_product*.jpg
+test_product*.jpeg
+test_product*.png
+test_product*.webp
+
+# Main exploratory notebook
+AI-Powered-Smart-Product-Pricing-Visual-Attribute-Extraction-System.ipynb
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
