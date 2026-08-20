@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import {
   analyzeImage,
   predictPrice,
@@ -8,6 +9,7 @@ import "./App.css";
 
 
 function App() {
+
   // =========================================================
   // PRICE FORM STATE
   // =========================================================
@@ -61,6 +63,7 @@ function App() {
   // =========================================================
 
   const handleChange = (event) => {
+
     const {
       name,
       value,
@@ -68,14 +71,17 @@ function App() {
       checked,
     } = event.target;
 
-    setForm((previous) => ({
-      ...previous,
 
-      [name]:
-        type === "checkbox"
-          ? checked
-          : value,
-    }));
+    setForm(
+      (previous) => ({
+        ...previous,
+
+        [name]:
+          type === "checkbox"
+            ? checked
+            : value,
+      })
+    );
   };
 
 
@@ -83,33 +89,136 @@ function App() {
   // IMAGE SELECT
   // =========================================================
 
-  const handleImageChange = (event) => {
+  const handleImageChange = (
+    event
+  ) => {
+
     const file =
       event.target.files?.[0];
+
 
     if (!file) {
       return;
     }
 
-    // Release previous local preview URL.
+
+    // Remove previous temporary preview URL
     if (imagePreview) {
+
       URL.revokeObjectURL(
         imagePreview
       );
     }
 
-    const preview =
-      URL.createObjectURL(file);
 
-    setImageFile(file);
+    const preview =
+      URL.createObjectURL(
+        file
+      );
+
+
+    setImageFile(
+      file
+    );
+
 
     setImagePreview(
       preview
     );
 
-    setImageResult(null);
 
-    setImageError("");
+    // Clear previous image result
+    setImageResult(
+      null
+    );
+
+
+    setImageError(
+      ""
+    );
+  };
+
+
+  // =========================================================
+  // ATTRIBUTE VALUE HELPER
+  //
+  // Backend may return:
+  //
+  // [
+  //   {
+  //      value: "65 ml",
+  //      confidence: "medium",
+  //      source: "OCR-corrupted ml unit recovered"
+  //   }
+  // ]
+  //
+  // or sometimes:
+  //
+  // ["65 ml"]
+  // =========================================================
+
+  const getFirstAttributeValue = (
+    values
+  ) => {
+
+    if (
+      !values ||
+      values.length === 0
+    ) {
+      return "";
+    }
+
+
+    const first =
+      values[0];
+
+
+    if (
+      typeof first === "string"
+    ) {
+      return first;
+    }
+
+
+    return (
+      first?.value || ""
+    );
+  };
+
+
+  // =========================================================
+  // CLEAN VARIANT
+  //
+  // Example:
+  //
+  // "2 in 1 | Classic Clean"
+  //
+  // becomes:
+  //
+  // "2 in 1 Classic Clean"
+  // =========================================================
+
+  const cleanVariant = (
+    variant
+  ) => {
+
+    if (!variant) {
+      return "";
+    }
+
+
+    return (
+      variant
+        .replaceAll(
+          "|",
+          " "
+        )
+        .replace(
+          /\s+/g,
+          " "
+        )
+        .trim()
+    );
   };
 
 
@@ -117,98 +226,328 @@ function App() {
   // IMAGE ANALYSIS
   // =========================================================
 
-  const handleImageAnalysis = async () => {
-    if (!imageFile) {
-      setImageError(
-        "Please select an image first."
-      );
+  const handleImageAnalysis =
+    async () => {
 
-      return;
-    }
+      if (!imageFile) {
 
-    setImageLoading(true);
-
-    setImageError("");
-
-    setImageResult(null);
-
-    try {
-      const data =
-        await analyzeImage(
-          imageFile
+        setImageError(
+          "Please select an image first."
         );
 
-      setImageResult(
-        data
+        return;
+      }
+
+
+      setImageLoading(
+        true
       );
-    } catch (err) {
+
+
       setImageError(
-        err.response?.data?.detail ||
-        "Image analysis failed."
+        ""
       );
-    } finally {
-      setImageLoading(false);
-    }
-  };
+
+
+      setImageResult(
+        null
+      );
+
+
+      try {
+
+        // ===================================================
+        // 1. SEND IMAGE TO BACKEND
+        // ===================================================
+
+        const data =
+          await analyzeImage(
+            imageFile
+          );
+
+
+        console.log(
+          "IMAGE ANALYSIS RESULT:",
+          data
+        );
+
+
+        // ===================================================
+        // 2. SAVE RESULT FOR UI
+        // ===================================================
+
+        setImageResult(
+          data
+        );
+
+
+        // ===================================================
+        // 3. GET PRODUCT IDENTITY
+        // ===================================================
+
+        const brand =
+          data?.brand ||
+          "";
+
+
+        const productType =
+          data?.product_type ||
+          "";
+
+
+        const variant =
+          cleanVariant(
+            data?.variant
+          );
+
+
+        // ===================================================
+        // 4. GET USEFUL ATTRIBUTES
+        // ===================================================
+
+        const volume =
+          getFirstAttributeValue(
+            data?.attributes
+              ?.volume
+          );
+
+
+        const weight =
+          getFirstAttributeValue(
+            data?.attributes
+              ?.weight
+          );
+
+
+        const storage =
+          getFirstAttributeValue(
+            data?.attributes
+              ?.storage
+          );
+
+
+        // ===================================================
+        // 5. BUILD PRODUCT TITLE AUTOMATICALLY
+        //
+        // Example:
+        //
+        // Head & Shoulders
+        // +
+        // 2 in 1 Classic Clean
+        // +
+        // Shampoo
+        // +
+        // 700 ml
+        //
+        // =
+        //
+        // Head & Shoulders 2 in 1 Classic Clean
+        // Shampoo 700 ml
+        // ===================================================
+
+        const titleParts = [
+          brand,
+          variant,
+          productType,
+          volume,
+          weight,
+          storage,
+        ];
+
+
+        const generatedTitle =
+          titleParts
+            .filter(
+              Boolean
+            )
+            .join(
+              " "
+            )
+            .replace(
+              /\s+/g,
+              " "
+            )
+            .trim();
+
+
+        // ===================================================
+        // 6. AUTO-FILL PRICE FORM
+        // ===================================================
+
+        setForm(
+          (previous) => ({
+            ...previous,
+
+            title:
+              generatedTitle ||
+              productType ||
+              previous.title,
+
+            category_name:
+              productType ||
+              previous.category_name,
+          })
+        );
+
+
+        // ===================================================
+        // 7. CLEAR OLD PRICE RESULT
+        //
+        // Important:
+        // Existing result may belong to an older product.
+        // ===================================================
+
+        setResult(
+          null
+        );
+
+
+        setError(
+          ""
+        );
+
+
+      } catch (err) {
+
+        console.error(
+          "IMAGE ANALYSIS ERROR:",
+          err
+        );
+
+
+        setImageError(
+          err.response
+            ?.data
+            ?.detail ||
+          "Image analysis failed."
+        );
+
+      } finally {
+
+        setImageLoading(
+          false
+        );
+
+      }
+    };
 
 
   // =========================================================
   // PRICE PREDICTION
   // =========================================================
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleSubmit =
+    async (
+      event
+    ) => {
 
-    setLoading(true);
+      event.preventDefault();
 
-    setError("");
 
-    setResult(null);
+      setLoading(
+        true
+      );
 
-    try {
-      const payload = {
-        title:
-          form.title,
 
-        category_name:
-          form.category_name,
+      setError(
+        ""
+      );
 
-        stars:
-          Number(
-            form.stars
-          ),
 
-        reviews:
-          Number(
-            form.reviews
-          ),
+      setResult(
+        null
+      );
 
-        bought_in_last_month:
-          Number(
-            form.bought_in_last_month
-          ),
 
-        is_best_seller:
-          form.is_best_seller,
-      };
+      try {
 
-      const data =
-        await predictPrice(
+        // ===================================================
+        // CREATE REQUEST PAYLOAD
+        // ===================================================
+
+        const payload = {
+
+          title:
+            form.title,
+
+          category_name:
+            form.category_name,
+
+          stars:
+            Number(
+              form.stars
+            ),
+
+          reviews:
+            Number(
+              form.reviews
+            ),
+
+          bought_in_last_month:
+            Number(
+              form.bought_in_last_month
+            ),
+
+          is_best_seller:
+            form.is_best_seller,
+        };
+
+
+        console.log(
+          "PRICE PREDICTION PAYLOAD:",
           payload
         );
 
-      setResult(
-        data
-      );
-    } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-        "Prediction failed."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+
+        // ===================================================
+        // CALL BACKEND
+        // ===================================================
+
+        const data =
+          await predictPrice(
+            payload
+          );
+
+
+        console.log(
+          "PRICE PREDICTION RESULT:",
+          data
+        );
+
+
+        // ===================================================
+        // SAVE RESULT
+        // ===================================================
+
+        setResult(
+          data
+        );
+
+
+      } catch (err) {
+
+        console.error(
+          "PRICE PREDICTION ERROR:",
+          err
+        );
+
+
+        setError(
+          err.response
+            ?.data
+            ?.detail ||
+          "Prediction failed."
+        );
+
+
+      } finally {
+
+        setLoading(
+          false
+        );
+
+      }
+    };
 
 
   // =========================================================
@@ -216,16 +555,23 @@ function App() {
   // =========================================================
 
   const formattedPrice =
-    result?.predicted_price != null
+    result
+      ?.predicted_price != null
+
       ? new Intl.NumberFormat(
           "en-US",
           {
-            style: "currency",
-            currency: "USD",
+            style:
+              "currency",
+
+            currency:
+              "USD",
           }
         ).format(
-          result.predicted_price
+          result
+            .predicted_price
         )
+
       : null;
 
 
@@ -236,170 +582,268 @@ function App() {
   const confidenceLabel = (
     confidence
   ) => {
+
     if (!confidence) {
+
       return "Unknown";
     }
+
 
     return (
       confidence
         .charAt(0)
         .toUpperCase()
+
       +
-      confidence.slice(1)
+
+      confidence
+        .slice(1)
     );
   };
 
 
   // =========================================================
-  // ATTRIBUTE HELPER
-  // Backend format:
-  //
-  // [
-  //   {
-  //      value: "65 ml",
-  //      confidence: "medium",
-  //      source: "OCR-corrupted ml unit recovered"
-  //   }
-  // ]
+  // ATTRIBUTE RENDER HELPER
   // =========================================================
 
   const renderAttribute = (
     label,
     values
   ) => {
+
+    // =======================================================
+    // NOTHING DETECTED
+    // =======================================================
+
     if (
       !values ||
       values.length === 0
     ) {
+
       return (
-        <div className="attribute-item">
-          <span className="attribute-label">
+
+        <div
+          className="attribute-item"
+        >
+
+          <span
+            className="attribute-label"
+          >
+
             {label}
+
           </span>
 
-          <strong className="not-detected">
+
+          <strong
+            className="not-detected"
+          >
+
             Not detected
+
           </strong>
+
         </div>
       );
     }
 
+
+    // =======================================================
+    // ATTRIBUTE DETECTED
+    // =======================================================
+
     return (
-      <div className="attribute-item">
-        <span className="attribute-label">
+
+      <div
+        className="attribute-item"
+      >
+
+        <span
+          className="attribute-label"
+        >
+
           {label}
+
         </span>
 
-        {values.map(
-          (
-            item,
-            index
-          ) => (
-            <div
-              key={
-                `${label}-${index}`
-              }
-              className="attribute-value-block"
-            >
-              <strong className="attribute-main-value">
-                {
-                  typeof item === "string"
-                    ? item
-                    : item.value
-                }
-              </strong>
 
-              {
-                typeof item !== "string" &&
-                (
-                  <>
-                    <div className="attribute-meta">
+        {
+          values.map(
+            (
+              item,
+              index
+            ) => (
+
+              <div
+                key={
+                  `${label}-${index}`
+                }
+                className="attribute-value-block"
+              >
+
+                {/* ==========================================
+                    VALUE
+                ========================================== */}
+
+                <strong
+                  className="attribute-main-value"
+                >
+
+                  {
+                    typeof item === "string"
+                      ? item
+                      : item.value
+                  }
+
+                </strong>
+
+
+                {/* ==========================================
+                    CONFIDENCE + SOURCE
+                ========================================== */}
+
+                {
+                  typeof item !== "string" &&
+                  (
+
+                    <div
+                      className="attribute-meta"
+                    >
+
                       <span
                         className={
                           `confidence-badge confidence-${item.confidence || "unknown"}`
                         }
                       >
+
                         {
                           confidenceLabel(
                             item.confidence
                           )
                         }
+
                       </span>
+
 
                       {
                         item.source && (
+
                           <small>
-                            {item.source}
+
+                            {
+                              item.source
+                            }
+
                           </small>
+
                         )
                       }
+
                     </div>
-                  </>
-                )
-              }
-            </div>
+
+                  )
+                }
+
+              </div>
+            )
           )
-        )}
+        }
+
       </div>
     );
   };
 
 
   // =========================================================
-  // RENDER
+  // UI
   // =========================================================
 
   return (
-    <div className="app">
+
+    <div
+      className="app"
+    >
 
       {/* ====================================================
           NAVBAR
       ==================================================== */}
 
-      <header className="navbar">
+      <header
+        className="navbar"
+      >
+
         <div>
+
           <h2>
             SmartPrice AI
           </h2>
 
+
           <span>
             Product Intelligence Platform
           </span>
+
         </div>
 
-        <div className="status">
+
+        <div
+          className="status"
+        >
+
           <span
             className="status-dot"
           />
 
+
           final_clean_v1
+
         </div>
+
       </header>
 
 
-      <main className="container">
+      <main
+        className="container"
+      >
+
 
         {/* ==================================================
             HERO
         ================================================== */}
 
-        <section className="hero">
-          <div className="hero-badge">
+        <section
+          className="hero"
+        >
+
+          <div
+            className="hero-badge"
+          >
+
             AI-Powered Product Pricing
+
           </div>
 
+
           <h1>
+
             Price smarter.
+
             <br />
+
             Understand products better.
+
           </h1>
 
+
           <p>
+
             Predict product prices and
             extract visual attributes
             from product images using
             your trained AI pipeline.
+
           </p>
+
         </section>
 
 
@@ -407,42 +851,75 @@ function App() {
             IMAGE ANALYSIS
         ================================================== */}
 
-        <section className="image-section">
+        <section
+          className="image-section"
+        >
 
-          <div className="section-title">
-            <p className="small-label">
+          <div
+            className="section-title"
+          >
+
+            <p
+              className="small-label"
+            >
+
               VISUAL ATTRIBUTE EXTRACTION
+
             </p>
 
+
             <h2>
+
               Analyze Product Image
+
             </h2>
+
           </div>
 
 
-          <div className="image-grid">
+          <div
+            className="image-grid"
+          >
 
-            {/* ----------------------------------------------
+
+            {/* ==============================================
                 IMAGE UPLOAD
-            ---------------------------------------------- */}
+            ============================================== */}
 
-            <div className="image-upload-card">
+            <div
+              className="image-upload-card"
+            >
 
               {
                 !imagePreview
                   ? (
-                    <label className="upload-zone">
-                      <div className="upload-icon">
+
+                    <label
+                      className="upload-zone"
+                    >
+
+                      <div
+                        className="upload-icon"
+                      >
+
                         +
+
                       </div>
 
+
                       <h3>
+
                         Upload product image
+
                       </h3>
 
+
                       <p>
+
                         JPG, PNG or WEBP
+
                       </p>
+
 
                       <input
                         type="file"
@@ -452,10 +929,16 @@ function App() {
                         }
                         hidden
                       />
+
                     </label>
+
                   )
                   : (
-                    <div className="preview-wrapper">
+
+                    <div
+                      className="preview-wrapper"
+                    >
+
                       <img
                         src={
                           imagePreview
@@ -464,8 +947,13 @@ function App() {
                         className="image-preview"
                       />
 
-                      <label className="change-image">
+
+                      <label
+                        className="change-image"
+                      >
+
                         Change Image
+
 
                         <input
                           type="file"
@@ -475,8 +963,11 @@ function App() {
                           }
                           hidden
                         />
+
                       </label>
+
                     </div>
+
                   )
               }
 
@@ -492,138 +983,227 @@ function App() {
                   imageLoading
                 }
               >
+
                 {
                   imageLoading
                     ? "Analyzing Image..."
                     : "Analyze Image"
                 }
+
               </button>
 
 
               {
                 imageError && (
-                  <div className="error-box">
-                    {imageError}
+
+                  <div
+                    className="error-box"
+                  >
+
+                    {
+                      imageError
+                    }
+
                   </div>
+
                 )
               }
 
             </div>
 
 
-            {/* ----------------------------------------------
-                IMAGE RESULT
-            ---------------------------------------------- */}
+            {/* ==============================================
+                IMAGE ANALYSIS RESULT
+            ============================================== */}
 
-            <div className="image-result-card">
+            <div
+              className="image-result-card"
+            >
 
               {
                 !imageResult &&
-                !imageLoading && (
-                  <div className="image-empty">
+                !imageLoading &&
+                (
+
+                  <div
+                    className="image-empty"
+                  >
+
                     <h3>
+
                       Extracted attributes
                       will appear here
+
                     </h3>
 
+
                     <p>
+
                       Upload and analyze
                       a product image.
+
                     </p>
+
                   </div>
+
                 )
               }
 
 
               {
-                imageLoading && (
-                  <div className="image-empty">
-                    <div className="loader" />
+                imageLoading &&
+                (
+
+                  <div
+                    className="image-empty"
+                  >
+
+                    <div
+                      className="loader"
+                    />
+
 
                     <h3>
+
                       Running OCR...
+
                     </h3>
 
+
                     <p>
+
                       Extracting product
                       identity and measurable
                       attributes.
+
                     </p>
+
                   </div>
+
                 )
               }
 
 
               {
-                imageResult && (
-                  <div className="image-analysis-result">
+                imageResult &&
+                (
+
+                  <div
+                    className="image-analysis-result"
+                  >
+
 
                     {/* ======================================
                         PRODUCT IDENTITY
                     ====================================== */}
 
-                    <p className="small-label">
+                    <p
+                      className="small-label"
+                    >
+
                       PRODUCT IDENTITY
+
                     </p>
 
-                    <div className="identity-section">
 
-                      <div className="identity-item">
+                    <div
+                      className="identity-section"
+                    >
+
+
+                      <div
+                        className="identity-item"
+                      >
+
                         <span>
+
                           Product Type
+
                         </span>
 
+
                         <strong>
+
                           {
                             imageResult
-                              .product_type ||
+                              .product_type
+                            ||
                             "Not detected"
                           }
+
                         </strong>
+
                       </div>
 
 
-                      <div className="identity-item">
+                      <div
+                        className="identity-item"
+                      >
+
                         <span>
+
                           Brand
+
                         </span>
 
+
                         <strong>
+
                           {
                             imageResult
-                              .brand ||
+                              .brand
+                            ||
                             "Not detected"
                           }
+
                         </strong>
+
                       </div>
 
 
-                      <div className="identity-item">
+                      <div
+                        className="identity-item"
+                      >
+
                         <span>
+
                           Variant
+
                         </span>
 
+
                         <strong>
+
                           {
                             imageResult
-                              .variant ||
+                              .variant
+                            ||
                             "Not detected"
                           }
+
                         </strong>
+
                       </div>
 
                     </div>
 
 
                     {/* ======================================
-                        NUMERIC ATTRIBUTES
+                        EXTRACTED ATTRIBUTES
                     ====================================== */}
 
-                    <p className="small-label attribute-heading">
+                    <p
+                      className="small-label attribute-heading"
+                    >
+
                       EXTRACTED ATTRIBUTES
+
                     </p>
 
-                    <div className="attributes-grid">
+
+                    <div
+                      className="attributes-grid"
+                    >
 
                       {
                         renderAttribute(
@@ -634,6 +1214,7 @@ function App() {
                         )
                       }
 
+
                       {
                         renderAttribute(
                           "Weight",
@@ -642,6 +1223,7 @@ function App() {
                             ?.weight
                         )
                       }
+
 
                       {
                         renderAttribute(
@@ -652,6 +1234,7 @@ function App() {
                         )
                       }
 
+
                       {
                         renderAttribute(
                           "Storage",
@@ -660,6 +1243,7 @@ function App() {
                             ?.storage
                         )
                       }
+
 
                       {
                         renderAttribute(
@@ -670,6 +1254,7 @@ function App() {
                         )
                       }
 
+
                       {
                         renderAttribute(
                           "Voltage",
@@ -679,6 +1264,7 @@ function App() {
                         )
                       }
 
+
                       {
                         renderAttribute(
                           "Quantity",
@@ -687,6 +1273,7 @@ function App() {
                             ?.quantity
                         )
                       }
+
 
                       {
                         renderAttribute(
@@ -704,21 +1291,32 @@ function App() {
                         OCR TEXT
                     ====================================== */}
 
-                    <div className="ocr-box">
+                    <div
+                      className="ocr-box"
+                    >
+
                       <span>
+
                         OCR Text
+
                       </span>
 
+
                       <p>
+
                         {
                           imageResult
-                            .ocr_text ||
+                            .ocr_text
+                          ||
                           "No text detected"
                         }
+
                       </p>
+
                     </div>
 
                   </div>
+
                 )
               }
 
@@ -733,22 +1331,38 @@ function App() {
             PRICE PREDICTION
         ================================================== */}
 
-        <section className="dashboard">
+        <section
+          className="dashboard"
+        >
 
-          {/* ----------------------------------------------
+
+          {/* ==============================================
               PRODUCT FORM
-          ---------------------------------------------- */}
+          ============================================== */}
 
-          <div className="form-card">
+          <div
+            className="form-card"
+          >
 
-            <div className="card-header">
-              <p className="small-label">
+            <div
+              className="card-header"
+            >
+
+              <p
+                className="small-label"
+              >
+
                 PRICE PREDICTION
+
               </p>
 
+
               <h2>
+
                 Product Details
+
               </h2>
+
             </div>
 
 
@@ -758,10 +1372,21 @@ function App() {
               }
             >
 
-              <div className="field">
+
+              {/* ============================================
+                  PRODUCT TITLE
+              ============================================ */}
+
+              <div
+                className="field"
+              >
+
                 <label>
+
                   Product title
+
                 </label>
+
 
                 <input
                   name="title"
@@ -771,16 +1396,27 @@ function App() {
                   onChange={
                     handleChange
                   }
-                  placeholder="Dell Latitude Laptop Intel Core i7..."
+                  placeholder="Example: Head & Shoulders Shampoo 700 ml"
                   required
                 />
+
               </div>
 
 
-              <div className="field">
+              {/* ============================================
+                  CATEGORY
+              ============================================ */}
+
+              <div
+                className="field"
+              >
+
                 <label>
+
                   Category
+
                 </label>
+
 
                 <input
                   name="category_name"
@@ -790,18 +1426,32 @@ function App() {
                   onChange={
                     handleChange
                   }
-                  placeholder="Computers & Tablets"
+                  placeholder="Example: Shampoo"
                   required
                 />
+
               </div>
 
 
-              <div className="form-grid">
+              {/* ============================================
+                  OTHER STRUCTURED FEATURES
+              ============================================ */}
 
-                <div className="field">
+              <div
+                className="form-grid"
+              >
+
+
+                <div
+                  className="field"
+                >
+
                   <label>
+
                     Rating
+
                   </label>
+
 
                   <input
                     type="number"
@@ -816,13 +1466,20 @@ function App() {
                       handleChange
                     }
                   />
+
                 </div>
 
 
-                <div className="field">
+                <div
+                  className="field"
+                >
+
                   <label>
+
                     Reviews
+
                   </label>
+
 
                   <input
                     type="number"
@@ -835,34 +1492,52 @@ function App() {
                       handleChange
                     }
                   />
+
                 </div>
 
 
-                <div className="field">
+                <div
+                  className="field"
+                >
+
                   <label>
+
                     Bought Last Month
+
                   </label>
+
 
                   <input
                     type="number"
                     name="bought_in_last_month"
                     min="0"
                     value={
-                      form.bought_in_last_month
+                      form
+                        .bought_in_last_month
                     }
                     onChange={
                       handleChange
                     }
                   />
+
                 </div>
 
 
-                <div className="field">
+                <div
+                  className="field"
+                >
+
                   <label>
+
                     Best Seller
+
                   </label>
 
-                  <div className="checkbox-wrapper">
+
+                  <div
+                    className="checkbox-wrapper"
+                  >
+
                     <input
                       type="checkbox"
                       name="is_best_seller"
@@ -875,19 +1550,28 @@ function App() {
                       }
                     />
 
+
                     <span>
+
                       {
                         form
                           .is_best_seller
                           ? "Yes"
                           : "No"
                       }
+
                     </span>
+
                   </div>
+
                 </div>
 
               </div>
 
+
+              {/* ============================================
+                  PREDICT BUTTON
+              ============================================ */}
 
               <button
                 type="submit"
@@ -896,19 +1580,30 @@ function App() {
                   loading
                 }
               >
+
                 {
                   loading
                     ? "Running AI Model..."
                     : "Predict Price"
                 }
+
               </button>
 
 
               {
-                error && (
-                  <div className="error-box">
-                    {error}
+                error &&
+                (
+
+                  <div
+                    className="error-box"
+                  >
+
+                    {
+                      error
+                    }
+
                   </div>
+
                 )
               }
 
@@ -917,107 +1612,177 @@ function App() {
           </div>
 
 
-          {/* ----------------------------------------------
+          {/* ==============================================
               PRICE RESULT
-          ---------------------------------------------- */}
+          ============================================== */}
 
-          <div className="result-card">
+          <div
+            className="result-card"
+          >
 
             {
               !result &&
-              !loading && (
-                <div className="empty-result">
+              !loading &&
+              (
 
-                  <div className="price-icon">
+                <div
+                  className="empty-result"
+                >
+
+                  <div
+                    className="price-icon"
+                  >
+
                     $
+
                   </div>
 
+
                   <h2>
+
                     Your prediction
                     will appear here
+
                   </h2>
 
                 </div>
+
               )
             }
 
 
             {
-              loading && (
-                <div className="empty-result">
+              loading &&
+              (
 
-                  <div className="loader" />
+                <div
+                  className="empty-result"
+                >
+
+                  <div
+                    className="loader"
+                  />
+
 
                   <h2>
+
                     Running prediction...
+
                   </h2>
 
                 </div>
+
               )
             }
 
 
             {
-              result && (
-                <div className="prediction-result">
+              result &&
+                (
 
-                  <p className="small-label">
-                    PREDICTED PRICE
-                  </p>
+                  <div
+                    className="prediction-result"
+                  >
 
-                  <div className="price-value">
-                    {formattedPrice}
+                    <p
+                      className="small-label"
+                    >
+
+                      PREDICTED PRICE
+
+                    </p>
+
+
+                    <div
+                      className="price-value"
+                    >
+
+                      {
+                        formattedPrice
+                      }
+
+                    </div>
+
+
+                    <div
+                      className="metrics"
+                    >
+
+
+                      <div
+                        className="metric"
+                      >
+
+                        <span>
+
+                          Cluster
+
+                        </span>
+
+
+                        <strong>
+
+                          #
+                          {
+                            result
+                              .cluster_id
+                          }
+
+                        </strong>
+
+                      </div>
+
+
+                      <div
+                        className="metric"
+                      >
+
+                        <span>
+
+                          Model
+
+                        </span>
+
+
+                        <strong>
+
+                          {
+                            result
+                              .model_version
+                          }
+
+                        </strong>
+
+                      </div>
+
+
+                      <div
+                        className="metric"
+                      >
+
+                        <span>
+
+                          Device
+
+                        </span>
+
+
+                        <strong>
+
+                          {
+                            result
+                              .device
+                          }
+
+                        </strong>
+
+                      </div>
+
+                    </div>
+
                   </div>
 
-
-                  <div className="metrics">
-
-                    <div className="metric">
-                      <span>
-                        Cluster
-                      </span>
-
-                      <strong>
-                        #
-                        {
-                          result
-                            .cluster_id
-                        }
-                      </strong>
-                    </div>
-
-
-                    <div className="metric">
-                      <span>
-                        Model
-                      </span>
-
-                      <strong>
-                        {
-                          result
-                            .model_version
-                        }
-                      </strong>
-                    </div>
-
-
-                    <div className="metric">
-                      <span>
-                        Device
-                      </span>
-
-                      <strong>
-                        {
-                          result
-                            .device
-                        }
-                      </strong>
-                    </div>
-
-                  </div>
-
-                </div>
-              )
+                )
             }
 
           </div>
